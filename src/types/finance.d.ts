@@ -26,3 +26,12 @@ export interface Transaction {
   notes: string | null;
   user_id: string; // Added for Supabase RLS
 }
+
+export interface Budget {
+  id: string;
+  category_id: string;
+  monthly_limit: number;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}

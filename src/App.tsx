@@ -5,8 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import Login from "./pages/Login"; // Import Login page
-import SessionProvider from "./components/SessionProvider"; // Import SessionProvider
+import Login from "./pages/Login";
+import BudgetSettings from "./pages/BudgetSettings"; // Import BudgetSettings page
+import SessionProvider from "./components/SessionProvider";
 
 const queryClient = new QueryClient();
 
@@ -16,10 +17,11 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <SessionProvider> {/* Wrap BrowserRouter with SessionProvider */}
+        <SessionProvider>
           <Routes>
             <Route path="/" element={<Index />} />
-            <Route path="/login" element={<Login />} /> {/* Add Login route */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/budgets" element={<BudgetSettings />} /> {/* Add BudgetSettings route */}
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { Category, AccountMap, Transaction } from "@/types/finance";
+import { Category, AccountMap, Transaction, Budget } from "@/types/finance";
 import { showError, showSuccess } from "@/utils/toast";
 
 // --- Categories ---
@@ -96,4 +96,35 @@ export async function updateTransactionIsWork(transactionId: string, isWork: boo
   }
   showSuccess("Transaction work status updated successfully!");
   return data as Transaction;
+}
+
+// --- Budgets ---
+export async function fetchBudgets(userId: string): Promise<Budget[]> {
+  const { data, error } = await supabase
+    .from('budgets')
+    .select('*')
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error("[finance.ts] Error fetching budgets:", error);
+    showError("Failed to load budgets.");
+    return [];
+  }
+  return data as Budget[];
+}
+
+export async function upsertBudget(budget: Omit<Budget, 'id' | 'created_at' | 'updated_at'> & { id?: string }): Promise<Budget | null> {
+  const { data, error } = await supabase
+    .from('budgets')
+    .upsert(budget, { onConflict: 'category_id, user_id' })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[finance.ts] Error upserting budget:", error);
+    showError("Failed to save budget.");
+    return null;
+  }
+  showSuccess("Budget saved successfully!");
+  return data as Budget;
 }
