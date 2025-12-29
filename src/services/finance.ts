@@ -80,3 +80,20 @@ export async function insertTransactions(transactions: Omit<Transaction, 'id'>[]
   showSuccess(`Successfully added ${data.length} transactions!`);
   return data as Transaction[];
 }
+
+export async function updateTransactionIsWork(transactionId: string, isWork: boolean): Promise<Transaction | null> {
+  const { data, error } = await supabase
+    .from('transactions')
+    .update({ is_work: isWork })
+    .eq('id', transactionId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[finance.ts] Error updating transaction 'is_work' status:", error);
+    showError("Failed to update transaction work status.");
+    return null;
+  }
+  showSuccess("Transaction work status updated successfully!");
+  return data as Transaction;
+}
