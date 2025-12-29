@@ -47,8 +47,8 @@ export const getYearMonthLabel = (date: Date): string => {
  * @returns True if a duplicate is found, false otherwise.
  */
 export const isDuplicateTransaction = (
-  newTransaction: Omit<Transaction, 'id'>,
-  existingTransactions: Omit<Transaction, 'id'>[]
+  newTransaction: Omit<Transaction, 'id' | 'user_id'>, // Changed to omit user_id for duplicate check
+  existingTransactions: Omit<Transaction, 'id' | 'user_id'>[] // Changed to omit user_id for duplicate check
 ): boolean => {
   return existingTransactions.some(
     (existing) =>

@@ -12,6 +12,7 @@ import { showSuccess, showError } from "@/utils/toast";
 import { AccountMap, Transaction } from "@/types/finance";
 import { parseDDMMYYYY, getWeekStart, getMonthIndex, getYearMonthLabel, isDuplicateTransaction, generateId } from "@/lib/finance-utils";
 import { seedAccountMaps } from "@/data/seed"; // Using seed data for accounts
+import { useSupabaseSession } from "@/hooks/use-supabase-session"; // Import the new hook
 
 interface CsvUploaderProps {
   onTransactionsProcessed: (transactions: Transaction[]) => void;
@@ -19,9 +20,18 @@ interface CsvUploaderProps {
 
 const CsvUploader: React.FC<CsvUploaderProps> = ({ onTransactionsProcessed }) => {
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [existingTransactions, setExistingTransactions] = useState<Omit<Transaction, 'id'>[]>([]); // Simulate existing transactions for duplicate check
+  const [existingTransactions, setExistingTransactions] = useState<Omit<Transaction, 'id' | 'user_id'>[]>([]); // Simulate existing transactions for duplicate check
+  const { userId, loading: sessionLoading } = useSupabaseSession(); // Get userId from the hook
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
+    if (sessionLoading) {
+      showError("Session is still loading. Please wait.");
+      return;
+    }
+    if (!userId) {
+      showError("You must be logged in to upload transactions.");
+      return;
+    }
     if (!selectedAccountId) {
       showError("Please select an account before uploading.");
       return;
@@ -32,7 +42,7 @@ const CsvUploader: React.FC<CsvUploaderProps> = ({ onTransactionsProcessed }) =>
         header: true,
         skipEmptyLines: true,
         complete: (results) => {
-          const parsedTransactions: Omit<Transaction, 'id'>[] = [];
+          const parsedTransactions: Omit<Transaction, 'id' | 'user_id'>[] = [];
           let duplicatesCount = 0;
 
           results.data.forEach((row: any) => {
@@ -49,7 +59,7 @@ const CsvUploader: React.FC<CsvUploaderProps> = ({ onTransactionsProcessed }) =>
             const transactionDate = parseDDMMYYYY(ingDate);
             const formattedDate = transactionDate.toISOString().split('T')[0]; // YYYY-MM-DD
 
-            const newTransaction: Omit<Transaction, 'id'> = {
+            const newTransaction: Omit<Transaction, 'id' | 'user_id'> = {
               date: formattedDate,
               description: ingDescription,
               debit: ingDebit,
@@ -61,6 +71,7 @@ const CsvUploader: React.FC<CsvUploaderProps> = ({ onTransactionsProcessed }) =>
               notes: null,
             };
 
+            // For duplicate check, we don't need user_id or id
             if (isDuplicateTransaction(newTransaction, existingTransactions)) {
               duplicatesCount++;
             } else {
@@ -71,6 +82,7 @@ const CsvUploader: React.FC<CsvUploaderProps> = ({ onTransactionsProcessed }) =>
           const transactionsWithIds: Transaction[] = parsedTransactions.map(tx => ({
             ...tx,
             id: generateId(),
+            user_id: userId!, // Assign the current user's ID
           }));
 
           // Update simulated existing transactions
@@ -89,9 +101,9 @@ const CsvUploader: React.FC<CsvUploaderProps> = ({ onTransactionsProcessed }) =>
         },
       });
     });
-  }, [selectedAccountId, existingTransactions, onTransactionsProcessed]);
+  }, [selectedAccountId, existingTransactions, onTransactionsProcessed, userId, sessionLoading]);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'text/csv': ['.csv'] } });
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'text/csv': ['.csv'] }, disabled: !userId || sessionLoading });
 
   return (
     <Card className="w-full max-w-md mx-auto">
@@ -102,7 +114,7 @@ const CsvUploader: React.FC<CsvUploaderProps> = ({ onTransactionsProcessed }) =>
         <div>
           <Label htmlFor="account-select">Select Account</Label>
           <Select onValueChange={setSelectedAccountId} value={selectedAccountId || ""}>
-            <SelectTrigger id="account-select">
+            <SelectTrigger id="account-select" disabled={!userId || sessionLoading}>
               <SelectValue placeholder="Choose an account" />
             </SelectTrigger>
             <SelectContent>
@@ -118,15 +130,19 @@ const CsvUploader: React.FC<CsvUploaderProps> = ({ onTransactionsProcessed }) =>
           {...getRootProps()}
           className={`border-2 border-dashed p-6 rounded-lg text-center cursor-pointer transition-colors ${
             isDragActive ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-gray-400"
-          } ${!selectedAccountId ? "opacity-50 cursor-not-allowed" : ""}`}
+          } ${!selectedAccountId || !userId || sessionLoading ? "opacity-50 cursor-not-allowed" : ""}`}
         >
-          <input {...getInputProps()} disabled={!selectedAccountId} />
-          {isDragActive ? (
+          <input {...getInputProps()} disabled={!selectedAccountId || !userId || sessionLoading} />
+          {sessionLoading ? (
+            <p>Loading user session...</p>
+          ) : !userId ? (
+            <p className="text-sm text-red-500 mt-2">Please log in to upload transactions.</p>
+          ) : isDragActive ? (
             <p>Drop the files here ...</p>
           ) : (
             <p>Drag 'n' drop ING CSV files here, or click to select files</p>
           )}
-          {!selectedAccountId && <p className="text-sm text-red-500 mt-2">Please select an account first.</p>}
+          {!selectedAccountId && userId && <p className="text-sm text-red-500 mt-2">Please select an account first.</p>}
         </div>
       </CardContent>
     </Card>

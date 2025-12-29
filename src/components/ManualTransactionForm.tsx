@@ -20,6 +20,7 @@ import { showSuccess, showError } from "@/utils/toast";
 import { Transaction } from "@/types/finance";
 import { seedCategories, seedAccountMaps } from "@/data/seed";
 import { generateId } from "@/lib/finance-utils";
+import { useSupabaseSession } from "@/hooks/use-supabase-session"; // Import the new hook
 
 interface ManualTransactionFormProps {
   onTransactionAdded: (transaction: Transaction) => void;
@@ -39,6 +40,8 @@ const formSchema = z.object({
 });
 
 const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransactionAdded }) => {
+  const { userId, loading: sessionLoading } = useSupabaseSession(); // Get userId from the hook
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -56,6 +59,15 @@ const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransac
   const primaryCategories = seedCategories.filter(cat => cat.type === 'primary');
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
+    if (sessionLoading) {
+      showError("Session is still loading. Please wait.");
+      return;
+    }
+    if (!userId) {
+      showError("You must be logged in to add transactions.");
+      return;
+    }
+
     const newTransaction: Transaction = {
       id: generateId(),
       date: format(values.date, 'yyyy-MM-dd'),
@@ -67,6 +79,7 @@ const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransac
       category_2_id: null, // Sub-category can be added later
       is_work: values.isWork,
       notes: values.notes || null,
+      user_id: userId, // Assign the current user's ID
     };
 
     onTransactionAdded(newTransaction);
@@ -91,6 +104,7 @@ const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransac
                     "w-full justify-start text-left font-normal",
                     !form.watch("date") && "text-muted-foreground"
                   )}
+                  disabled={!userId || sessionLoading}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {form.watch("date") ? format(form.watch("date"), "PPP") : <span>Pick a date</span>}
@@ -114,6 +128,7 @@ const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransac
               id="description"
               {...form.register("description")}
               placeholder="e.g., Coffee at Starbucks"
+              disabled={!userId || sessionLoading}
             />
             {form.formState.errors.description && <p className="text-red-500 text-sm mt-1">{form.formState.errors.description.message}</p>}
           </div>
@@ -126,13 +141,14 @@ const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransac
               step="0.01"
               {...form.register("amount", { valueAsNumber: true })}
               placeholder="0.00"
+              disabled={!userId || sessionLoading}
             />
             {form.formState.errors.amount && <p className="text-red-500 text-sm mt-1">{form.formState.errors.amount.message}</p>}
           </div>
 
           <div>
             <Label htmlFor="type">Transaction Type</Label>
-            <Select onValueChange={(value) => form.setValue("type", value as "debit" | "credit")} value={form.watch("type")}>
+            <Select onValueChange={(value) => form.setValue("type", value as "debit" | "credit")} value={form.watch("type")} disabled={!userId || sessionLoading}>
               <SelectTrigger id="type">
                 <SelectValue placeholder="Select type" />
               </SelectTrigger>
@@ -145,7 +161,7 @@ const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransac
 
           <div>
             <Label htmlFor="account">Account</Label>
-            <Select onValueChange={(value) => form.setValue("accountId", value)} value={form.watch("accountId")}>
+            <Select onValueChange={(value) => form.setValue("accountId", value)} value={form.watch("accountId")} disabled={!userId || sessionLoading}>
               <SelectTrigger id="account">
                 <SelectValue placeholder="Select an account" />
               </SelectTrigger>
@@ -162,7 +178,7 @@ const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransac
 
           <div>
             <Label htmlFor="category1">Primary Category</Label>
-            <Select onValueChange={(value) => form.setValue("category1Id", value)} value={form.watch("category1Id") || ""}>
+            <Select onValueChange={(value) => form.setValue("category1Id", value)} value={form.watch("category1Id") || ""} disabled={!userId || sessionLoading}>
               <SelectTrigger id="category1">
                 <SelectValue placeholder="Select a category (optional)" />
               </SelectTrigger>
@@ -181,6 +197,7 @@ const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransac
               id="isWork"
               checked={form.watch("isWork")}
               onCheckedChange={(checked) => form.setValue("isWork", checked)}
+              disabled={!userId || sessionLoading}
             />
             <Label htmlFor="isWork">Is Work Related?</Label>
           </div>
@@ -191,10 +208,13 @@ const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransac
               id="notes"
               {...form.register("notes")}
               placeholder="Add any additional notes here..."
+              disabled={!userId || sessionLoading}
             />
           </div>
 
-          <Button type="submit" className="w-full">Add Transaction</Button>
+          <Button type="submit" className="w-full" disabled={!userId || sessionLoading}>
+            {sessionLoading ? "Loading..." : !userId ? "Log in to Add Transaction" : "Add Transaction"}
+          </Button>
         </form>
       </CardContent>
     </Card>

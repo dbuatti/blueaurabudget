@@ -3,12 +3,14 @@ export interface Category {
   name: string;
   type: 'primary' | 'sub';
   parent_id: string | null; // References Category.id for sub-categories
+  user_id: string; // Added for Supabase RLS
 }
 
 export interface AccountMap {
   id: string;
   account_number: string; // e.g., "90593060"
   display_name: string; // e.g., "Credit Card"
+  user_id: string; // Added for Supabase RLS
 }
 
 export interface Transaction {
@@ -22,4 +24,5 @@ export interface Transaction {
   category_2_id: string | null; // References Category.id for sub-category
   is_work: boolean;
   notes: string | null;
+  user_id: string; // Added for Supabase RLS
 }
