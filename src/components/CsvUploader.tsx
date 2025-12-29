@@ -10,18 +10,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { showSuccess, showError } from "@/utils/toast";
 import { AccountMap, Transaction } from "@/types/finance";
-import { parseDDMMYYYY, getWeekStart, getMonthIndex, getYearMonthLabel, isDuplicateTransaction, generateId } from "@/lib/finance-utils";
-import { seedAccountMaps } from "@/data/seed"; // Using seed data for accounts
-import { useSupabaseSession } from "@/hooks/use-supabase-session"; // Import the new hook
+import { parseDDMMYYYY, isDuplicateTransaction, generateId } from "@/lib/finance-utils";
+import { useSupabaseSession } from "@/hooks/use-supabase-session";
+import { insertTransactions } from "@/services/finance"; // Import the new service
 
 interface CsvUploaderProps {
-  onTransactionsProcessed: (transactions: Transaction[]) => void;
+  onTransactionsProcessed: () => void; // No longer passes transactions directly
+  accountMaps: AccountMap[];
+  existingTransactions: Transaction[];
 }
 
-const CsvUploader: React.FC<CsvUploaderProps> = ({ onTransactionsProcessed }) => {
+const CsvUploader: React.FC<CsvUploaderProps> = ({ onTransactionsProcessed, accountMaps, existingTransactions }) => {
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [existingTransactions, setExistingTransactions] = useState<Omit<Transaction, 'id' | 'user_id'>[]>([]); // Simulate existing transactions for duplicate check
-  const { userId, loading: sessionLoading } = useSupabaseSession(); // Get userId from the hook
+  const { userId, loading: sessionLoading } = useSupabaseSession();
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (sessionLoading) {
@@ -41,8 +42,8 @@ const CsvUploader: React.FC<CsvUploaderProps> = ({ onTransactionsProcessed }) =>
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
-        complete: (results) => {
-          const parsedTransactions: Omit<Transaction, 'id' | 'user_id'>[] = [];
+        complete: async (results) => {
+          const transactionsToInsert: Omit<Transaction, 'id'>[] = [];
           let duplicatesCount = 0;
 
           results.data.forEach((row: any) => {
@@ -59,49 +60,52 @@ const CsvUploader: React.FC<CsvUploaderProps> = ({ onTransactionsProcessed }) =>
             const transactionDate = parseDDMMYYYY(ingDate);
             const formattedDate = transactionDate.toISOString().split('T')[0]; // YYYY-MM-DD
 
-            const newTransaction: Omit<Transaction, 'id' | 'user_id'> = {
+            const newTransactionCandidate: Omit<Transaction, 'id' | 'user_id'> = {
               date: formattedDate,
               description: ingDescription,
               debit: ingDebit,
               credit: ingCredit,
               account_id: selectedAccountId,
-              category_1_id: null, // Will be categorized later
-              category_2_id: null, // Will be categorized later
-              is_work: false, // Default to false
+              category_1_id: null,
+              category_2_id: null,
+              is_work: false,
               notes: null,
             };
 
-            // For duplicate check, we don't need user_id or id
-            if (isDuplicateTransaction(newTransaction, existingTransactions)) {
+            // Check against existing transactions from Supabase
+            if (isDuplicateTransaction(newTransactionCandidate, existingTransactions)) {
               duplicatesCount++;
             } else {
-              parsedTransactions.push(newTransaction);
+              transactionsToInsert.push({
+                ...newTransactionCandidate,
+                user_id: userId,
+              });
             }
           });
 
-          const transactionsWithIds: Transaction[] = parsedTransactions.map(tx => ({
-            ...tx,
-            id: generateId(),
-            user_id: userId!, // Assign the current user's ID
-          }));
+          if (transactionsToInsert.length > 0) {
+            const inserted = await insertTransactions(transactionsToInsert);
+            if (inserted.length > 0) {
+              onTransactionsProcessed(); // Trigger refetch in parent
+            }
+          }
 
-          // Update simulated existing transactions
-          setExistingTransactions(prev => [...prev, ...parsedTransactions]);
-
-          onTransactionsProcessed(transactionsWithIds);
-
-          let summaryMessage = `Successfully imported ${transactionsWithIds.length} new transactions.`;
+          let summaryMessage = `Processed ${transactionsToInsert.length} new transactions.`;
           if (duplicatesCount > 0) {
             summaryMessage += ` ${duplicatesCount} duplicates were skipped.`;
           }
-          showSuccess(summaryMessage);
+          if (transactionsToInsert.length === 0 && duplicatesCount === 0) {
+            showError("No new transactions to add or all were duplicates.");
+          } else {
+            showSuccess(summaryMessage);
+          }
         },
         error: (error: any) => {
           showError(`Error parsing CSV: ${error.message}`);
         },
       });
     });
-  }, [selectedAccountId, existingTransactions, onTransactionsProcessed, userId, sessionLoading]);
+  }, [selectedAccountId, existingTransactions, onTransactionsProcessed, userId, sessionLoading, accountMaps]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'text/csv': ['.csv'] }, disabled: !userId || sessionLoading });
 
@@ -118,7 +122,7 @@ const CsvUploader: React.FC<CsvUploaderProps> = ({ onTransactionsProcessed }) =>
               <SelectValue placeholder="Choose an account" />
             </SelectTrigger>
             <SelectContent>
-              {seedAccountMaps.map((account) => (
+              {accountMaps.map((account) => (
                 <SelectItem key={account.id} value={account.id}>
                   {account.display_name} ({account.account_number})
                 </SelectItem>

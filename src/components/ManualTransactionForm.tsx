@@ -17,13 +17,14 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { showSuccess, showError } from "@/utils/toast";
-import { Transaction } from "@/types/finance";
-import { seedCategories, seedAccountMaps } from "@/data/seed";
-import { generateId } from "@/lib/finance-utils";
-import { useSupabaseSession } from "@/hooks/use-supabase-session"; // Import the new hook
+import { Transaction, Category, AccountMap } from "@/types/finance";
+import { useSupabaseSession } from "@/hooks/use-supabase-session";
+import { insertTransaction } from "@/services/finance"; // Import the new service
 
 interface ManualTransactionFormProps {
-  onTransactionAdded: (transaction: Transaction) => void;
+  onTransactionAdded: () => void; // No longer passes transaction directly
+  categories: Category[];
+  accountMaps: AccountMap[];
 }
 
 const formSchema = z.object({
@@ -39,8 +40,8 @@ const formSchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
-const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransactionAdded }) => {
-  const { userId, loading: sessionLoading } = useSupabaseSession(); // Get userId from the hook
+const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransactionAdded, categories, accountMaps }) => {
+  const { userId, loading: sessionLoading } = useSupabaseSession();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -56,9 +57,9 @@ const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransac
     },
   });
 
-  const primaryCategories = seedCategories.filter(cat => cat.type === 'primary');
+  const primaryCategories = categories.filter(cat => cat.type === 'primary');
 
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
     if (sessionLoading) {
       showError("Session is still loading. Please wait.");
       return;
@@ -68,8 +69,7 @@ const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransac
       return;
     }
 
-    const newTransaction: Transaction = {
-      id: generateId(),
+    const newTransaction: Omit<Transaction, 'id'> = {
       date: format(values.date, 'yyyy-MM-dd'),
       description: values.description,
       debit: values.type === 'debit' ? values.amount : null,
@@ -79,12 +79,23 @@ const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransac
       category_2_id: null, // Sub-category can be added later
       is_work: values.isWork,
       notes: values.notes || null,
-      user_id: userId, // Assign the current user's ID
+      user_id: userId,
     };
 
-    onTransactionAdded(newTransaction);
-    showSuccess("Transaction added successfully!");
-    form.reset(); // Reset form after submission
+    const inserted = await insertTransaction(newTransaction);
+    if (inserted) {
+      onTransactionAdded(); // Trigger refetch in parent
+      form.reset({
+        date: new Date(),
+        description: "",
+        amount: 0,
+        type: "debit",
+        accountId: "",
+        category1Id: null,
+        isWork: false,
+        notes: "",
+      }); // Reset form after submission
+    }
   };
 
   return (
@@ -166,7 +177,7 @@ const ManualTransactionForm: React.FC<ManualTransactionFormProps> = ({ onTransac
                 <SelectValue placeholder="Select an account" />
               </SelectTrigger>
               <SelectContent>
-                {seedAccountMaps.map((account) => (
+                {accountMaps.map((account) => (
                   <SelectItem key={account.id} value={account.id}>
                     {account.display_name}
                   </SelectItem>
